@@ -5,6 +5,14 @@ from dotenv import load_dotenv
 import asyncio
 from html import unescape
 import re
+from flask import Flask
+
+# Configurar Flask para mantener un servidor activo
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "¡El bot está en línea y funcionando!"
 
 # Cargar variables de entorno
 load_dotenv()
@@ -24,21 +32,14 @@ RSS_URL = "http://www.ole.com.ar/rss/ultimas-noticias/"
 enviadas = set()
 
 def limpiar_html(texto):
-    """
-    Limpia etiquetas HTML y convierte entidades como &amp; en texto plano.
-    """
     texto_sin_html = re.sub(r'<[^>]+>', '', texto)  # Eliminar etiquetas HTML
     return unescape(texto_sin_html)  # Decodificar entidades HTML
 
 async def obtener_nuevas_noticias():
-    """
-    Obtiene las noticias nuevas desde el feed RSS.
-    """
     feed = feedparser.parse(RSS_URL)
     nuevas_noticias = []
 
-    for entrada in feed.entries:
-        # Verifica si la noticia ya fue enviada
+    for entrada in feed.entries:  # Corrección de "en" a "in"
         if entrada.link not in enviadas:
             nuevas_noticias.append({
                 "titulo": limpiar_html(entrada.title),
@@ -50,9 +51,6 @@ async def obtener_nuevas_noticias():
     return nuevas_noticias
 
 async def enviar_noticias_por_telegram(nuevas_noticias):
-    """
-    Envía noticias nuevas por Telegram.
-    """
     for noticia in nuevas_noticias:
         mensaje = f"*{noticia['titulo']}*\n\n{noticia['resumen']}\n\n[Leer más]({noticia['link']})\n\n📡 *Fuente: Diario Olé*"
         try:
@@ -60,15 +58,11 @@ async def enviar_noticias_por_telegram(nuevas_noticias):
         except Exception as e:
             print(f"Error al enviar el mensaje: {e}")
 
-async def main():
-    """
-    Monitorea el feed RSS y envía actualizaciones periódicas.
-    """
+async def iniciar_bot():
     print("Bot de noticias iniciado correctamente...")
 
     while True:
         try:
-            # Obtener noticias nuevas
             nuevas_noticias = await obtener_nuevas_noticias()
             if nuevas_noticias:
                 await enviar_noticias_por_telegram(nuevas_noticias)
@@ -78,8 +72,11 @@ async def main():
         except Exception as e:
             print(f"Error durante el monitoreo: {e}")
 
-        await asyncio.sleep(300)  # Esperar 5 minutos antes de consultar nuevamente
+        await asyncio.sleep(300)  # Esperar 5 minutos
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Ejecutar Flask y el bot en paralelo
+    import threading
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)).start()
+    asyncio.run(iniciar_bot())
 
