@@ -27,8 +27,7 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 # URLs de feeds RSS
 RSS_FEEDS = {
-    "Diario Olé": "http://www.ole.com.ar/rss/ultimas-noticias/",
-    "Diario AS": "https://as.com/rss/futbol/portada.xml"
+    "Diario Olé": "http://www.ole.com.ar/rss/ultimas-noticias/"
 }
 
 # Almacena los enlaces de noticias ya enviadas
@@ -58,18 +57,16 @@ async def obtener_nuevas_noticias():
 async def enviar_noticias_por_telegram(nuevas_noticias):
     for noticia in nuevas_noticias:
         # Añadir una advertencia si la fuente es Diario Olé
-        advertencia = ""
-        if noticia['fuente'] == "Diario Olé":
-            advertencia = (
-                "\n\n⚠️ *Nota:* Es posible que al abrir este enlace, Olé te solicite iniciar sesión o registrarte para acceder al contenido completo."
-            )
+        advertencia = (
+            "\n\n⚠️ *Nota:* Es posible que al abrir este enlace, Olé te solicite iniciar sesión o registrarte para acceder al contenido completo."
+        )
         
         # Formato del mensaje: título, resumen, enlace y fuente
         mensaje = (
             f"*{noticia['titulo']}*\n\n"  # Título destacado
             f"{noticia['resumen']}\n\n"  # Resumen completo
             f"[Leer más]({noticia['link']})"  # Enlace al artículo
-            f"{advertencia}\n\n"  # Advertencia si aplica
+            f"{advertencia}\n\n"  # Advertencia
             f"📡 *Fuente: {noticia['fuente']}*"
         )
         try:
