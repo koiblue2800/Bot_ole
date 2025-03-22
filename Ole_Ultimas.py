@@ -27,7 +27,8 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 # URLs de feeds RSS
 RSS_FEEDS = {
-    "Diario Olé": "http://www.ole.com.ar/rss/ultimas-noticias/"
+    "Diario Olé": "http://www.ole.com.ar/rss/ultimas-noticias/",
+    "Infobae Deportes": "https://www.infobae.com/deportes/rss/"
 }
 
 # Almacena los enlaces de noticias ya enviadas
@@ -37,13 +38,23 @@ def limpiar_html(texto):
     texto_sin_html = re.sub(r'<[^>]+>', '', texto)  # Eliminar etiquetas HTML
     return unescape(texto_sin_html)  # Decodificar entidades HTML
 
+def es_deportivo(titulo, resumen, fuente, link):
+    palabras_clave = ['fútbol', 'tenis', 'básquet', 'deportes', 'golf', 'automovilismo']  # Ajusta según lo necesario
+    texto_combined = (titulo + resumen).lower()
+    # Asegurar que sea del feed Infobae Deportes y contiene palabras clave
+    return any(palabra in texto_combined for palabra in palabras_clave) and "infobae.com/deportes" in link
+
 async def obtener_nuevas_noticias():
     nuevas_noticias = []
     
     for fuente, url in RSS_FEEDS.items():
         feed = feedparser.parse(url)
         for entrada in feed.entries:
-            if entrada.link not in enviadas:
+            if entrada.link not in enviadas and "infobae.com/deportes" in entrada.link and es_deportivo(
+                limpiar_html(entrada.title), 
+                limpiar_html(getattr(entrada, "summary", "")), 
+                fuente, 
+                entrada.link):
                 nuevas_noticias.append({
                     "titulo": limpiar_html(entrada.title),
                     "link": entrada.link,
@@ -56,18 +67,21 @@ async def obtener_nuevas_noticias():
 
 async def enviar_noticias_por_telegram(nuevas_noticias):
     for noticia in nuevas_noticias:
-        # Añadir una advertencia si la fuente es Diario Olé
-        advertencia = (
-            "\n\n⚠️ *Nota:* Es posible que al abrir este enlace, Olé te solicite iniciar sesión o registrarte para acceder al contenido completo."
-        )
+        # Verificar la fuente para incluirla en el mensaje
+        if noticia["fuente"] == "Diario Olé":
+            advertencia = (
+                "\n\n⚠️ *Nota:* Es posible que al abrir este enlace, Olé te solicite iniciar sesión o registrarte para acceder al contenido completo."
+            )
+        else:
+            advertencia = ""  # No agregar advertencias para otras fuentes
         
-        # Formato del mensaje: título, resumen, enlace y fuente
+        # Formato del mensaje con la fuente especificada
         mensaje = (
             f"*{noticia['titulo']}*\n\n"  # Título destacado
             f"{noticia['resumen']}\n\n"  # Resumen completo
-            f"[Leer más]({noticia['link']})"  # Enlace al artículo
-            f"{advertencia}\n\n"  # Advertencia
-            f"📡 *Fuente: {noticia['fuente']}*"
+            f"[Leer más]({noticia['link']})\n\n"  # Enlace al artículo
+            f"📡 *Fuente: {noticia['fuente']}*"  # Mostrar la fuente
+            f"{advertencia}"  # Añadir advertencias específicas si aplica
         )
         try:
             await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje, parse_mode="Markdown")
