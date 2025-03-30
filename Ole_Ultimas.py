@@ -37,7 +37,7 @@ async def obtener_nuevas_noticias():
     nuevas_noticias = []
     for fuente, url in RSS_FEEDS.items():
         feed = feedparser.parse(url)
-        for entrada en feed.entries:
+        for entrada in feed.entries:
             link = entrada.link
             if link not in enlaces_enviados:
                 enlaces_enviados.add(link)
