@@ -2,3 +2,4 @@ flask
 feedparser
 python-telegram-bot
 python-dotenv
+schedule
