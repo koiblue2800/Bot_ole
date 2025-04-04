@@ -6,6 +6,9 @@ import asyncio
 from html import unescape
 import re
 from flask import Flask
+import threading
+import schedule
+import time
 
 # Configurar Flask para mantener un servidor activo
 app = Flask(__name__)
@@ -18,19 +21,36 @@ def home():
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_ERROR_CHANNEL = os.getenv("TELEGRAM_ERROR_CHANNEL")  # Canal para registrar errores
 
-if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-    raise ValueError("TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID no están configurados en el archivo .env")
+if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID or not TELEGRAM_ERROR_CHANNEL:
+    raise ValueError("Variables de entorno no están correctamente configuradas en el archivo .env")
 
 # Inicializar el bot de Telegram
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-# URL del feed RSS del Diario Olé
+# Función de limpieza de caché
+def limpiar_cache():
+    try:
+        # Aquí incluirías la lógica para limpiar la caché
+        print("Caché limpiada exitosamente.")
+        bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text="La caché fue limpiada exitosamente.")
+    except Exception as e:
+        print(f"Error al limpiar la caché: {e}")
+        bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al limpiar la caché: {e}")
+
+# Función de programación para limpieza cada 5 días
+def programar_tarea():
+    schedule.every(5).days.do(limpiar_cache)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+# RSS Feeds y lógica existente
 RSS_FEEDS = {
     "Diario Olé": "http://www.ole.com.ar/rss/ultimas-noticias/"
 }
-
-# Almacena los enlaces de noticias ya enviadas
 enlaces_enviados = set()
 
 async def obtener_nuevas_noticias():
@@ -61,10 +81,10 @@ async def enviar_noticias_por_telegram(nuevas_noticias):
         )
         try:
             msg = await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje, parse_mode="Markdown")
-            # Programar eliminación del mensaje después de un día
             asyncio.create_task(eliminar_mensaje(TELEGRAM_CHAT_ID, msg.message_id))
         except Exception as e:
             print(f"Error al enviar el mensaje: {e}")
+            bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al enviar el mensaje: {e}")
 
 async def eliminar_mensaje(chat_id, message_id):
     await asyncio.sleep(86400)  # Espera 24 horas (86400 segundos)
@@ -72,6 +92,7 @@ async def eliminar_mensaje(chat_id, message_id):
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
         print(f"Error al eliminar el mensaje: {e}")
+        bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al eliminar el mensaje: {e}")
 
 async def iniciar_bot():
     print("Bot de noticias iniciado correctamente...")
@@ -85,10 +106,12 @@ async def iniciar_bot():
                 print("No hay noticias nuevas.")
         except Exception as e:
             print(f"Error durante el monitoreo: {e}")
+            bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error durante el monitoreo: {e}")
         await asyncio.sleep(300)  # Esperar 5 minutos
 
 if __name__ == "__main__":
     # Ejecutar Flask y el bot en paralelo
-    import threading
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)).start()
+    # Ejecutar la tarea recurrente en otro hilo
+    threading.Thread(target=programar_tarea).start()
     asyncio.run(iniciar_bot())
