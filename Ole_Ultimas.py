@@ -30,18 +30,18 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID or not TELEGRAM_ERROR_CHANNEL:
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 # Función de limpieza de caché
-def limpiar_cache():
+async def limpiar_cache():
     try:
         # Aquí incluirías la lógica para limpiar la caché
         print("Caché limpiada exitosamente.")
-        bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text="La caché fue limpiada exitosamente.")
+        await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text="La caché fue limpiada exitosamente.")
     except Exception as e:
         print(f"Error al limpiar la caché: {e}")
-        bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al limpiar la caché: {e}")
+        await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al limpiar la caché: {e}")
 
 # Función de programación para limpieza cada 5 días
 def programar_tarea():
-    schedule.every(5).days.do(limpiar_cache)
+    schedule.every(5).days.do(lambda: asyncio.run(limpiar_cache()))
 
     while True:
         schedule.run_pending()
@@ -84,7 +84,7 @@ async def enviar_noticias_por_telegram(nuevas_noticias):
             asyncio.create_task(eliminar_mensaje(TELEGRAM_CHAT_ID, msg.message_id))
         except Exception as e:
             print(f"Error al enviar el mensaje: {e}")
-            bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al enviar el mensaje: {e}")
+            await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al enviar el mensaje: {e}")
 
 async def eliminar_mensaje(chat_id, message_id):
     await asyncio.sleep(86400)  # Espera 24 horas (86400 segundos)
@@ -92,7 +92,7 @@ async def eliminar_mensaje(chat_id, message_id):
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
         print(f"Error al eliminar el mensaje: {e}")
-        bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al eliminar el mensaje: {e}")
+        await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al eliminar el mensaje: {e}")
 
 async def iniciar_bot():
     print("Bot de noticias iniciado correctamente...")
@@ -106,7 +106,7 @@ async def iniciar_bot():
                 print("No hay noticias nuevas.")
         except Exception as e:
             print(f"Error durante el monitoreo: {e}")
-            bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error durante el monitoreo: {e}")
+            await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error durante el monitoreo: {e}")
         await asyncio.sleep(300)  # Esperar 5 minutos
 
 if __name__ == "__main__":
