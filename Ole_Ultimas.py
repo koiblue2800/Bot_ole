@@ -21,7 +21,7 @@ def home():
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-TELEGRAM_ERROR_CHANNEL = os.getenv("TELEGRAM_ERROR_CHANNEL")  # Canal para registrar errores
+TELEGRAM_ERROR_CHANNEL = os.getenv("TELEGRAM_ERROR_CHANNEL")
 
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID or not TELEGRAM_ERROR_CHANNEL:
     raise ValueError("Variables de entorno no están correctamente configuradas en el archivo .env")
@@ -29,30 +29,15 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID or not TELEGRAM_ERROR_CHANNEL:
 # Inicializar el bot de Telegram
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-# Función de limpieza de caché
-async def limpiar_cache():
-    try:
-        # Aquí incluirías la lógica para limpiar la caché
-        print("Caché limpiada exitosamente.")
-        await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text="La caché fue limpiada exitosamente.")
-    except Exception as e:
-        print(f"Error al limpiar la caché: {e}")
-        await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al limpiar la caché: {e}")
+# Lista para almacenar enlaces ya enviados
+enlaces_enviados = set()
 
-# Función de programación para limpieza cada 5 días
-def programar_tarea():
-    schedule.every(5).days.do(lambda: asyncio.run(limpiar_cache()))
-
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-
-# RSS Feeds y lógica existente
+# RSS Feeds
 RSS_FEEDS = {
     "Diario Olé": "http://www.ole.com.ar/rss/ultimas-noticias/"
 }
-enlaces_enviados = set()
 
+# Función para obtener noticias nuevas
 async def obtener_nuevas_noticias():
     nuevas_noticias = []
     for fuente, url in RSS_FEEDS.items():
@@ -62,7 +47,7 @@ async def obtener_nuevas_noticias():
             if link not in enlaces_enviados:
                 enlaces_enviados.add(link)
                 titulo = unescape(entrada.title)
-                resumen = unescape(re.sub(r'<.*?>', '', entrada.summary))  # Eliminar etiquetas HTML
+                resumen = unescape(re.sub(r'<.*?>', '', entrada.summary))
                 nuevas_noticias.append({
                     'titulo': titulo,
                     'resumen': resumen,
@@ -71,6 +56,7 @@ async def obtener_nuevas_noticias():
                 })
     return nuevas_noticias
 
+# Función para enviar noticias
 async def enviar_noticias_por_telegram(nuevas_noticias):
     for noticia in nuevas_noticias:
         mensaje = (
@@ -83,17 +69,41 @@ async def enviar_noticias_por_telegram(nuevas_noticias):
             msg = await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje, parse_mode="Markdown")
             asyncio.create_task(eliminar_mensaje(TELEGRAM_CHAT_ID, msg.message_id))
         except Exception as e:
-            print(f"Error al enviar el mensaje: {e}")
-            await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al enviar el mensaje: {e}")
+            error_msg = f"Error al enviar el mensaje: {e}"
+            print(error_msg)
+            try:
+                await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=error_msg)
+            except:
+                pass
 
+# Función para eliminar mensajes luego de 24h
 async def eliminar_mensaje(chat_id, message_id):
-    await asyncio.sleep(86400)  # Espera 24 horas (86400 segundos)
+    await asyncio.sleep(86400)  # 24 horas
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
-        print(f"Error al eliminar el mensaje: {e}")
-        await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error al eliminar el mensaje: {e}")
+        error_msg = f"Error al eliminar el mensaje: {e}"
+        print(error_msg)
+        try:
+            await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=error_msg)
+        except:
+            pass
 
+# Limpieza de caché cada 5 días
+async def limpiar_cache():
+    try:
+        enlaces_enviados.clear()  # Ahora sí limpia algo real
+        print("Caché limpiada exitosamente.")
+        await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text="La caché fue limpiada exitosamente.")
+    except Exception as e:
+        error_msg = f"Error al limpiar la caché: {e}"
+        print(error_msg)
+        try:
+            await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=error_msg)
+        except:
+            pass
+
+# Bucle de monitoreo de noticias
 async def iniciar_bot():
     print("Bot de noticias iniciado correctamente...")
     while True:
@@ -105,13 +115,29 @@ async def iniciar_bot():
             else:
                 print("No hay noticias nuevas.")
         except Exception as e:
-            print(f"Error durante el monitoreo: {e}")
-            await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=f"Error durante el monitoreo: {e}")
-        await asyncio.sleep(300)  # Esperar 5 minutos
+            error_msg = f"Error durante el monitoreo: {e}"
+            print(error_msg)
+            try:
+                await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text=error_msg)
+            except:
+                pass
+        await asyncio.sleep(300)  # 5 minutos
 
+# Hilo para Flask
+def iniciar_flask():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+
+# Hilo para tareas programadas
+def iniciar_schedule():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    schedule.every(5).days.do(lambda: loop.create_task(limpiar_cache()))
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+# Punto de entrada
 if __name__ == "__main__":
-    # Ejecutar Flask y el bot en paralelo
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)).start()
-    # Ejecutar la tarea recurrente en otro hilo
-    threading.Thread(target=programar_tarea).start()
+    threading.Thread(target=iniciar_flask).start()
+    threading.Thread(target=iniciar_schedule).start()
     asyncio.run(iniciar_bot())
