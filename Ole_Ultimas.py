@@ -9,6 +9,7 @@ from flask import Flask
 import threading
 import schedule
 import time
+import json  # Agregado para manejo de archivo JSON
 
 # Configurar Flask para mantener un servidor activo
 app = Flask(__name__)
@@ -29,8 +30,30 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID or not TELEGRAM_ERROR_CHANNEL:
 # Inicializar el bot de Telegram
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
+# Ruta del archivo JSON
+ENLACES_JSON = "enlaces_enviados.json"
+
+# Cargar enlaces enviados desde un archivo JSON
+def cargar_enlaces():
+    if os.path.exists(ENLACES_JSON):
+        try:
+            with open(ENLACES_JSON, "r") as f:
+                enlaces = json.load(f)
+                return set(enlaces)
+        except Exception as e:
+            print(f"Error al cargar el archivo JSON: {e}")
+    return set()
+
+# Guardar enlaces enviados en un archivo JSON
+def guardar_enlaces():
+    try:
+        with open(ENLACES_JSON, "w") as f:
+            json.dump(list(enlaces_enviados), f)
+    except Exception as e:
+        print(f"Error al guardar el archivo JSON: {e}")
+
 # Lista para almacenar enlaces ya enviados
-enlaces_enviados = set()
+enlaces_enviados = cargar_enlaces()
 
 # RSS Feeds
 RSS_FEEDS = {
@@ -46,6 +69,7 @@ async def obtener_nuevas_noticias():
             link = entrada.link
             if link not in enlaces_enviados:
                 enlaces_enviados.add(link)
+                guardar_enlaces()  # Guardar cada vez que se añade un nuevo enlace
                 titulo = unescape(entrada.title)
                 resumen = unescape(re.sub(r'<.*?>', '', entrada.summary))
                 nuevas_noticias.append({
@@ -63,7 +87,7 @@ async def enviar_noticias_por_telegram(nuevas_noticias):
             f"*{noticia['titulo']}*\n\n"
             f"{noticia['resumen']}\n\n"
             f"[Leer más]({noticia['link']})\n\n"
-            f"📡 *Fuente: {noticia['fuente']}*"
+            f"\ud83d\udce1 *Fuente: {noticia['fuente']}*"
         )
         try:
             msg = await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje, parse_mode="Markdown")
@@ -92,7 +116,8 @@ async def eliminar_mensaje(chat_id, message_id):
 # Limpieza de caché cada 5 días
 async def limpiar_cache():
     try:
-        enlaces_enviados.clear()  # Ahora sí limpia algo real
+        enlaces_enviados.clear()
+        guardar_enlaces()  # También limpiar el JSON
         print("Caché limpiada exitosamente.")
         await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text="La caché fue limpiada exitosamente.")
     except Exception as e:
