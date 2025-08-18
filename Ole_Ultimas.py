@@ -9,6 +9,7 @@ from flask import Flask
 import threading
 import schedule
 import time
+import json
 
 # Configurar Flask para mantener un servidor activo
 app = Flask(__name__)
@@ -30,7 +31,11 @@ if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID or not TELEGRAM_ERROR_CHANNEL:
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 # Lista para almacenar enlaces ya enviados
-enlaces_enviados = set()
+try:
+    with open("enlaces.json", "r") as f:
+        enlaces_enviados = set(json.load(f))
+except FileNotFoundError:
+    enlaces_enviados = set()
 
 # RSS Feeds
 RSS_FEEDS = {
@@ -46,8 +51,11 @@ async def obtener_nuevas_noticias():
             link = entrada.link
             if link not in enlaces_enviados:
                 enlaces_enviados.add(link)
-                titulo = unescape(entrada.title)
-                resumen = unescape(re.sub(r'<.*?>', '', entrada.summary))
+                # Guardar inmediatamente en archivo
+                with open("enlaces.json", "w") as f:
+                    json.dump(list(enlaces_enviados), f)
+                titulo = unescape(getattr(entrada, "title", "Sin título"))
+                resumen = unescape(re.sub(r'<.*?>', '', getattr(entrada, "summary", "")))
                 nuevas_noticias.append({
                     'titulo': titulo,
                     'resumen': resumen,
@@ -81,8 +89,7 @@ async def eliminar_mensaje(chat_id, message_id):
     await asyncio.sleep(86400)  # 24 horas
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception as e:
-        # Eliminar el envío de error de eliminación
+    except:
         pass
 
 # Función para enviar logs al canal de errores
@@ -95,7 +102,9 @@ async def enviar_log(log_message):
 # Limpieza de caché cada 5 días
 async def limpiar_cache():
     try:
-        enlaces_enviados.clear()  # Ahora sí limpia algo real
+        enlaces_enviados.clear()
+        with open("enlaces.json", "w") as f:
+            json.dump(list(enlaces_enviados), f)
         print("Caché limpiada exitosamente.")
         await bot.send_message(chat_id=TELEGRAM_ERROR_CHANNEL, text="La caché fue limpiada exitosamente.")
     except Exception as e:
@@ -115,16 +124,14 @@ async def iniciar_bot():
             if nuevas_noticias:
                 await enviar_noticias_por_telegram(nuevas_noticias)
                 log_message = f"{len(nuevas_noticias)} noticia(s) enviada(s)."
-                print(log_message)
-                await enviar_log(log_message)  # Enviar log al canal de errores
             else:
                 log_message = "No hay noticias nuevas."
-                print(log_message)
-                await enviar_log(log_message)  # Enviar log al canal de errores
+            print(log_message)
+            await enviar_log(log_message)
         except Exception as e:
             error_msg = f"Error durante el monitoreo: {e}"
             print(error_msg)
-            await enviar_log(error_msg)  # Enviar error al canal de errores
+            await enviar_log(error_msg)
         await asyncio.sleep(300)  # 5 minutos
 
 # Hilo para Flask
